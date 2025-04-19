@@ -9,35 +9,53 @@ selected_features = joblib.load("selected_features.pkl")
 st.title("🚨 Insurance Fraud Detection App")
 st.markdown("Enter claim details to predict if a case is potentially fraudulent.")
 
-# Feature input config based on data distribution
+# Human-readable dropdowns for encoded features
+incident_severity = st.selectbox("Incident Severity", [
+    "Minor Damage", "Major Damage", "Total Loss", "Trivial Damage"])
+
+occupation = st.selectbox("Insured's Occupation", [
+    "exec-managerial", "priv-house-serv", "craft-repair", "sales", "tech-support"])
+
+# Map dropdowns to one-hot format
+severity_map = {
+    "Minor Damage": {"incident_severity_Minor Damage": 1, "incident_severity_Total Loss": 0},
+    "Total Loss": {"incident_severity_Minor Damage": 0, "incident_severity_Total Loss": 1},
+    "Major Damage": {"incident_severity_Minor Damage": 0, "incident_severity_Total Loss": 0},
+    "Trivial Damage": {"incident_severity_Minor Damage": 0, "incident_severity_Total Loss": 0},
+}
+occupation_onehot = {col: 0 for col in selected_features if "insured_occupation" in col}
+occupation_col = f"insured_occupation_{occupation}"
+if occupation_col in occupation_onehot:
+    occupation_onehot[occupation_col] = 1
+
+# Config for numeric fields
+user_input_numeric = {}
 scale_config = {
-    "months_as_customer": {"min": 32, "max": 430, "step": 8, "default": 206},
-    "policy_deductable": {"min": 500, "max": 2000, "step": 30, "default": 1161},
-    "policy_annual_premium": {"min": 848, "max": 1653, "step": 16, "default": 1253},
-    "umbrella_limit": {"min": 0, "max": 6000000, "step": 120000, "default": 1202303},
-    "capital-gains": {"min": 0, "max": 71205, "step": 1424, "default": 25336}
+    "vehicle_claim": {"min": 0, "max": 50000, "step": 500, "default": 10000},
 }
 
-# Collect user input with integer-scaled widgets
-user_input = {}
 for feature in selected_features:
+    if feature in severity_map[incident_severity] or feature in occupation_onehot:
+        continue
     config = scale_config.get(feature, {"min": 0, "max": 100, "step": 1, "default": 0})
-    label = feature.replace("_", " ").capitalize()
+    user_input_numeric[feature] = st.number_input(
+        feature.replace('_', ' ').capitalize(),
+        min_value=config["min"],
+        max_value=config["max"],
+        value=config["default"],
+        step=config["step"]
+    )
 
-    if config["max"] - config["min"] <= 10 and config["step"] == 1:
-        user_input[feature] = st.selectbox(label, [0, 1])
-    else:
-        user_input[feature] = st.number_input(
-            label,
-            min_value=config["min"],
-            max_value=config["max"],
-            value=config["default"],
-            step=config["step"]
-        )
+# Merge all input into one vector
+final_input = {
+    **user_input_numeric,
+    **severity_map[incident_severity],
+    **occupation_onehot
+}
 
-# Predict button
+# Predict
 if st.button("Predict Fraud"):
-    input_df = pd.DataFrame([user_input])[selected_features]
+    input_df = pd.DataFrame([final_input])[selected_features]
     prediction = model.predict(input_df)[0]
     if prediction == 1:
         st.error("⚠️ Predicted: Fraudulent Claim")
